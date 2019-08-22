@@ -1,11 +1,14 @@
 [package]
 name = "clsag"
-version = "0.1.0"
-authors = ["kev <decentralisedkev@gmail.com>"]
+version = "0.1.2"
+authors = ["ken <shamirken@gmail.com>", "kev decentralisedkev@gmail.com"]
+description = "Compact Linkable Spontaneous Anonymous Group construction"
+license = "BSD-3-Clause"
+repository = "https://github.com/crate-crypto/CLSAG"
 edition = "2018"
 
 [dependencies]
-curve25519-dalek = { version = "1.0.3", features = ["serde"] }
-rand = "0.6"
+curve25519-dalek = { version = "1.2.3", features = ["serde"] }
+rand = "0.6.0"
 sha2 = "0.8"
-merlin = "1.1"
+merlin = "1.2.0"
