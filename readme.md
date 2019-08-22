@@ -2,7 +2,7 @@
 
 This is a pure Rust implementation of the Compact Linkable Spontaneous Anonymous Group construction.
 
-- This is a fork of the mlsag implementation.
+- This is a fork of the [MLSAG](https://github.com/crate-crypto/MLSAG) implementation.
 
 - This implementation has not been reviewed or auditted. Use at your own risk.
 
@@ -25,6 +25,12 @@ The following table gives benchmarks for dual-key verification using ristretto25
 | 512           | 267,760           |
 
 *CPU : 2.2 GHz Intel Core i7*
+
+
+
+## Paper
+
+https://eprint.iacr.org/2019/654
 
 ## License
 
