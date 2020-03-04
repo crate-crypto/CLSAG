@@ -1,7 +1,7 @@
 [package]
 name = "clsag"
 version = "0.1.2"
-authors = ["ken <shamirken@gmail.com>", "kev decentralisedkev@gmail.com"]
+authors = ["Kevaundray Wedderburn <kevtheappdev@gmail.com"]
 description = "Compact Linkable Spontaneous Anonymous Group construction"
 license = "BSD-3-Clause"
 repository = "https://github.com/crate-crypto/CLSAG"
