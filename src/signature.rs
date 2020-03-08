@@ -37,7 +37,11 @@ impl From<crate::member::Error> for Error {
 }
 
 impl Signature {
-    pub fn verify(&self, public_keys: &mut Vec<Vec<CompressedRistretto>>) -> Result<(), Error> {
+    pub fn verify(
+        &self,
+        public_keys: &mut Vec<Vec<CompressedRistretto>>,
+        msg: &[u8],
+    ) -> Result<(), Error> {
         // Skip subgroup check as ristretto points have co-factor 1.
 
         let num_responses = self.responses.len();
@@ -51,7 +55,7 @@ impl Signature {
         let pubkey_matrix_bytes: Vec<u8> = self.pubkeys_to_bytes(public_keys);
 
         // Calculate aggregation co-efficients
-        let agg_coeffs = calc_aggregation_coefficients(&pubkey_matrix_bytes, &self.key_images);
+        let agg_coeffs = calc_aggregation_coefficients(&pubkey_matrix_bytes, &self.key_images, msg);
 
         let mut challenge = self.challenge.clone();
         for (pub_keys, response) in public_keys.iter().zip(self.responses.iter()) {
@@ -78,6 +82,7 @@ impl Signature {
     pub fn optimised_verify(
         &self,
         public_keys: &mut Vec<Vec<CompressedRistretto>>,
+        msg: &[u8],
     ) -> Result<(), Error> {
         // Skip subgroup check as ristretto points have co-factor 1.
 
@@ -114,7 +119,7 @@ impl Signature {
         let pubkey_matrix_bytes = self.pubkeys_to_bytes(public_keys);
 
         // Calculate aggregation co-efficients
-        let agg_coeffs = calc_aggregation_coefficients(&pubkey_matrix_bytes, &self.key_images);
+        let agg_coeffs = calc_aggregation_coefficients(&pubkey_matrix_bytes, &self.key_images, msg);
 
         let mut challenge = self.challenge.clone();
 
@@ -183,55 +188,58 @@ mod test {
     fn test_verify() {
         let num_keys = 1;
         let num_decoys = 1;
+        let msg = b"hello world";
 
         let mut clsag = generate_clsag_with(num_decoys, num_keys);
         clsag.add_member(generate_signer(num_keys));
-        let sig = clsag.sign().unwrap();
+        let sig = clsag.sign(msg).unwrap();
         let mut pub_keys = clsag.public_keys();
 
         let expected_pubkey_bytes = clsag.public_keys_bytes();
         let have_pubkey_bytes = sig.pubkeys_to_bytes(&pub_keys);
 
         assert_eq!(expected_pubkey_bytes, have_pubkey_bytes);
-        assert!(sig.optimised_verify(&mut pub_keys).is_ok());
+        assert!(sig.optimised_verify(&mut pub_keys, msg).is_ok());
     }
 
     #[test]
     fn test_verify_fail_shuffle_keys() {
         let num_keys = 2;
         let num_decoys = 11;
+        let msg = b"hello world";
 
         let mut clsag = generate_clsag_with(num_decoys, num_keys);
         clsag.add_member(generate_signer(num_keys));
-        let sig = clsag.sign().unwrap();
+        let sig = clsag.sign(msg).unwrap();
         let mut pub_keys = clsag.public_keys();
 
         // shuffle public key ordering
         pub_keys.shuffle(&mut thread_rng());
-        assert!(sig.optimised_verify(&mut pub_keys).is_err());
+        assert!(sig.optimised_verify(&mut pub_keys, msg).is_err());
     }
     #[test]
     fn test_verify_fail_incorrect_num_keys() {
         let num_keys = 2;
         let num_decoys = 11;
+        let msg = b"hello world";
 
         let mut clsag = generate_clsag_with(num_decoys, num_keys);
         clsag.add_member(generate_signer(num_keys));
-        let sig = clsag.sign().unwrap();
+        let sig = clsag.sign(msg).unwrap();
         let mut pub_keys = clsag.public_keys();
 
         // Add extra key
         let extra_key = generate_rand_compressed_points(num_keys);
         pub_keys.push(extra_key);
-        assert!(sig.optimised_verify(&mut pub_keys).is_err());
+        assert!(sig.optimised_verify(&mut pub_keys, msg).is_err());
 
         // remove the extra key and test should pass
         pub_keys.remove(pub_keys.len() - 1);
-        assert!(sig.optimised_verify(&mut pub_keys).is_ok());
+        assert!(sig.optimised_verify(&mut pub_keys, msg).is_ok());
 
         // remove another key and tests should fail
         pub_keys.remove(pub_keys.len() - 1);
-        assert!(sig.optimised_verify(&mut pub_keys).is_err());
+        assert!(sig.optimised_verify(&mut pub_keys, msg).is_err());
     }
 
     macro_rules! param_bench_verify {
@@ -240,13 +248,14 @@ mod test {
             fn $func_name(b: &mut Bencher) {
                 let num_keys = $num_keys;
                 let num_decoys = $num_decoys;
+                let msg = b"hello world";
 
                 let mut clsag = generate_clsag_with(num_decoys, num_keys);
                 clsag.add_member(generate_signer(num_keys));
-                let sig = clsag.sign().unwrap();
+                let sig = clsag.sign(msg).unwrap();
                 let mut pub_keys = clsag.public_keys();
 
-                b.iter(|| sig.optimised_verify(&mut pub_keys));
+                b.iter(|| sig.optimised_verify(&mut pub_keys, msg));
             }
         };
     }

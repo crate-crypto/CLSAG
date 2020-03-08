@@ -9,6 +9,7 @@ fn test_protocol() {
     // Define setup parameters
     let num_keys = 2;
     let num_decoys = 11;
+    let msg = b"hello world";
 
     // Define a clsag object which will be used to create a signature
     let mut clsag = Clsag::new();
@@ -23,8 +24,8 @@ fn test_protocol() {
     let signer = generate_signer(num_keys);
     clsag.add_member(signer);
 
-    let signature = clsag.sign().unwrap();
-    let res = signature.verify(&mut clsag.public_keys());
+    let signature = clsag.sign(msg).unwrap();
+    let res = signature.verify(&mut clsag.public_keys(), msg);
 
     assert!(res.is_ok())
 }
