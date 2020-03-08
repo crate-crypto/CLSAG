@@ -11,35 +11,8 @@ This is a pure Rust implementation of the Compact Linkable Spontaneous Anonymous
 
 In order to compile, you must be on Rust nightly.
 
-## Benchmarks
+## Rust
 
-The following table gives benchmarks for dual-key verification using ristretto255.
+This implementation requires Rust nightly.
 
-| Ring size     | Verification (μs) |
-|:-------------:|:-----------------:|
-| 2             | 997               |
-| 4             | 1,385             |
-| 6             | 2,026             |
-| 8             | 2,855             |
-| 11            | 3,695             |
-| 16            | 5,399             |
-| 32            | 11,939            |
-| 64            | 24,824            |
-| 128           | 48,453            |
-| 256           | 107,200           |
-| 512           | 267,760           |
-
-*CPU : 2.2 GHz Intel Core i7*
-
-
-
-## Paper
-
-https://eprint.iacr.org/2019/654
-
-## License
-
-Licensed under MIT: 
-
-- MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
-
+This branch uses Curve25519 and is used to test the performance between curve25519 and Ristretto
