@@ -1,18 +1,18 @@
 use crate::clsag::calc_aggregation_coefficients;
 use crate::constants::BASEPOINT;
+use crate::hash_to_curve;
 use crate::member::compute_challenge_ring;
 use crate::transcript::TranscriptProtocol;
-use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::VartimeMultiscalarMul;
 use merlin::Transcript;
-use sha2::Sha512;
 
 #[derive(Debug)]
 pub struct Signature {
     pub(crate) challenge: Scalar,
     pub(crate) responses: Vec<Scalar>,
-    pub(crate) key_images: Vec<CompressedRistretto>,
+    pub(crate) key_images: Vec<CompressedEdwardsY>,
 }
 
 pub enum Error {
@@ -27,6 +27,8 @@ pub enum Error {
     BadPoint,
     // This error occurs when an underlying error from the member package occurs
     MemberError(String),
+    // Points are not torsion free
+    NotTorsionFree,
 }
 
 impl From<crate::member::Error> for Error {
@@ -39,10 +41,42 @@ impl From<crate::member::Error> for Error {
 impl Signature {
     pub fn verify(
         &self,
-        public_keys: &mut Vec<Vec<CompressedRistretto>>,
+        public_keys: &mut Vec<Vec<CompressedEdwardsY>>,
         msg: &[u8],
     ) -> Result<(), Error> {
-        // Skip subgroup check as ristretto points have co-factor 1.
+        // Add subgroup checks
+        // multiply each public key by the order of the prime subgroup
+        // If we get the identity, then it was in the prime group order
+
+        // Check that each public key is in the prime order group
+        let mut new_vector_pub_keys = Vec::new();
+        for vector_of_keys in public_keys.iter() {
+            let mut new_pub_keys = Vec::new();
+
+            for public_key in vector_of_keys.iter() {
+                let decompressed_key = public_key.decompress().unwrap();
+                let ok = decompressed_key.is_torsion_free();
+                if !ok {
+                    return Err(Error::NotTorsionFree);
+                }
+                // This means that the public key is in the prime order subgroup
+                // So we can add it to the list of checked public keys
+                new_pub_keys.push(decompressed_key);
+            }
+            // All of the users pubkeys have been checked. We can add the user back into the list
+            new_vector_pub_keys.push(new_pub_keys);
+        }
+
+        // Check that key images are torsion free too
+        let mut checked_key_images = Vec::new();
+        for key_image in self.key_images.iter() {
+            let decompressed_key_image = key_image.decompress().unwrap();
+            let ok = decompressed_key_image.is_torsion_free();
+            if !ok {
+                return Err(Error::NotTorsionFree);
+            }
+            checked_key_images.push(decompressed_key_image);
+        }
 
         let num_responses = self.responses.len();
         let num_pubkey_sets = public_keys.len();
@@ -58,13 +92,13 @@ impl Signature {
         let agg_coeffs = calc_aggregation_coefficients(&pubkey_matrix_bytes, &self.key_images, msg);
 
         let mut challenge = self.challenge.clone();
-        for (pub_keys, response) in public_keys.iter().zip(self.responses.iter()) {
+        for (pub_keys, response) in new_vector_pub_keys.iter().zip(self.responses.iter()) {
             let first_pubkey = pub_keys[0];
-            let hashed_pubkey = RistrettoPoint::hash_from_bytes::<Sha512>(first_pubkey.as_bytes());
+            let hashed_pubkey = hash_to_curve(first_pubkey.compress().as_bytes());
             challenge = compute_challenge_ring(
                 pub_keys,
                 &challenge,
-                &self.key_images,
+                &checked_key_images,
                 response,
                 &agg_coeffs,
                 &hashed_pubkey,
@@ -81,7 +115,7 @@ impl Signature {
 
     pub fn optimised_verify(
         &self,
-        public_keys: &mut Vec<Vec<CompressedRistretto>>,
+        public_keys: &mut Vec<Vec<CompressedEdwardsY>>,
         msg: &[u8],
     ) -> Result<(), Error> {
         // Skip subgroup check as ristretto points have co-factor 1.
@@ -95,21 +129,20 @@ impl Signature {
         }
 
         // Calculate all response * BASEPOINT
-        let response_points: Vec<RistrettoPoint> = self
+        let response_points: Vec<EdwardsPoint> = self
             .responses
             .iter()
             .map(|response| response * BASEPOINT)
             .collect();
 
         // calculate all response * H(signingKeys)
-        let response_hashed_points: Vec<RistrettoPoint> = self
+        let response_hashed_points: Vec<EdwardsPoint> = self
             .responses
             .iter()
             .zip(public_keys.iter())
             .map(|(response, pub_keys)| {
                 let first_pubkey = pub_keys[0];
-                let hashed_pubkey =
-                    RistrettoPoint::hash_from_bytes::<Sha512>(first_pubkey.as_bytes());
+                let hashed_pubkey = hash_to_curve(first_pubkey.as_bytes());
 
                 response * hashed_pubkey
             })
@@ -131,14 +164,14 @@ impl Signature {
             let challenge_agg_coeffs: Vec<Scalar> =
                 agg_coeffs.iter().map(|ac| ac * &challenge).collect();
 
-            let mut l_i = RistrettoPoint::optional_multiscalar_mul(
+            let mut l_i = EdwardsPoint::optional_multiscalar_mul(
                 &challenge_agg_coeffs,
                 pub_keys.iter().map(|pt| pt.decompress()),
             )
             .ok_or(Error::BadPoint)?;
             l_i = l_i + resp_point;
 
-            let mut r_i = RistrettoPoint::optional_multiscalar_mul(
+            let mut r_i = EdwardsPoint::optional_multiscalar_mul(
                 &challenge_agg_coeffs,
                 self.key_images.iter().map(|pt| pt.decompress()),
             )
@@ -160,7 +193,7 @@ impl Signature {
         Ok(())
     }
 
-    fn pubkeys_to_bytes(&self, pubkey_matrix: &Vec<Vec<CompressedRistretto>>) -> Vec<u8> {
+    fn pubkeys_to_bytes(&self, pubkey_matrix: &Vec<Vec<CompressedEdwardsY>>) -> Vec<u8> {
         let mut bytes: Vec<u8> =
             Vec::with_capacity(self.key_images.len() * self.responses.len() * 64);
         for i in 0..pubkey_matrix.len() {

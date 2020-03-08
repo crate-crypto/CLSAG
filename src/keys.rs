@@ -1,7 +1,7 @@
 use crate::constants::BASEPOINT;
-use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use crate::hash_to_curve;
+use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
-use sha2::Sha512;
 
 use std::collections::HashSet;
 // Public key set represents a set of public keys
@@ -12,7 +12,7 @@ use std::collections::HashSet;
 // onto the protocol at this level, as the author cannot think of a
 // context where proving you own the same key twice would be useful.
 #[derive(Debug, Clone)]
-pub struct PublicSet(pub Vec<RistrettoPoint>);
+pub struct PublicSet(pub Vec<EdwardsPoint>);
 
 impl PublicSet {
     // Returns the number of public keys in the set
@@ -24,7 +24,7 @@ impl PublicSet {
         // XXX: Very in-efficient way to do this.
         // We can wait for upstream crate to implement Hash and use a HashSet instead
 
-        let compressed_points: Vec<CompressedRistretto> =
+        let compressed_points: Vec<CompressedEdwardsY> =
             self.0.iter().map(|point| point.compress()).collect();
 
         let hashable_slice: Vec<&[u8; 32]> =
@@ -36,9 +36,9 @@ impl PublicSet {
     }
     // Returns the Hash_to_point of the first public key in the set
     // This point is used extensively during the protocol for each member
-    pub fn hashed_pubkey(&self) -> RistrettoPoint {
+    pub fn hashed_pubkey(&self) -> EdwardsPoint {
         let first_pubkey = &self.0[0].compress();
-        RistrettoPoint::hash_from_bytes::<Sha512>(first_pubkey.as_bytes())
+        hash_to_curve(first_pubkey.as_bytes())
     }
     // Copies the public key set into a vector of bytes
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -49,8 +49,11 @@ impl PublicSet {
             .collect()
     }
 
-    pub fn to_keys(&self) -> Vec<CompressedRistretto> {
+    pub fn to_keys(&self) -> Vec<CompressedEdwardsY> {
         self.0.iter().map(|key| key.compress()).collect()
+    }
+    pub fn to_uncompressed_keys(&self) -> Vec<EdwardsPoint> {
+        self.0.clone()
     }
 }
 
@@ -69,7 +72,7 @@ impl PrivateSet {
             .0
             .iter()
             .map(|&x| x * BASEPOINT)
-            .collect::<Vec<RistrettoPoint>>();
+            .collect::<Vec<EdwardsPoint>>();
 
         PublicSet(public_keys)
     }
@@ -79,10 +82,7 @@ impl PrivateSet {
     // The difference here is that we compute the key images with respect to the hash of the
     // public key corresponding to the signing key
     // Note that the HashToPoint must not allow the basepoint in the public key to be factored out
-    pub fn compute_key_images(
-        &self,
-        signers_basepoint: &RistrettoPoint,
-    ) -> Vec<CompressedRistretto> {
+    pub fn compute_key_images(&self, signers_basepoint: &EdwardsPoint) -> Vec<CompressedEdwardsY> {
         self.0
             .iter()
             .map(|priv_key| (priv_key * signers_basepoint).compress())

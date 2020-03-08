@@ -1,8 +1,9 @@
 // helper functions for tests
+use super::constants::BASEPOINT;
 use crate::clsag::Clsag;
 use crate::keys::PrivateSet;
 use crate::member::Member;
-use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 
 // There is an exact copy of this function in member.rs
@@ -24,22 +25,24 @@ pub fn generate_private_set(num: usize) -> PrivateSet {
     PrivateSet(scalars)
 }
 
-pub fn generate_rand_points(num: usize) -> Vec<RistrettoPoint> {
+pub fn generate_rand_points(num: usize) -> Vec<EdwardsPoint> {
     let mut rng = rand::thread_rng();
-    let mut points = Vec::<RistrettoPoint>::with_capacity(num);
+    let mut points = Vec::<EdwardsPoint>::with_capacity(num);
 
     for _ in 0..num {
-        points.push(RistrettoPoint::random(&mut rng));
+        let p = Scalar::random(&mut rng) * BASEPOINT;
+        points.push(p);
     }
 
     points
 }
-pub fn generate_rand_compressed_points(num: usize) -> Vec<CompressedRistretto> {
+pub fn generate_rand_compressed_points(num: usize) -> Vec<CompressedEdwardsY> {
     let mut rng = rand::thread_rng();
-    let mut points = Vec::<CompressedRistretto>::with_capacity(num);
+    let mut points = Vec::<CompressedEdwardsY>::with_capacity(num);
 
     for _ in 0..num {
-        points.push(RistrettoPoint::random(&mut rng).compress());
+        let p = BASEPOINT * Scalar::random(&mut rng);
+        points.push(p.compress());
     }
 
     points

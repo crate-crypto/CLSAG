@@ -1,7 +1,7 @@
 use crate::constants::BASEPOINT;
 use crate::keys::{PrivateSet, PublicSet};
 use crate::transcript::TranscriptProtocol;
-use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::VartimeMultiscalarMul;
 use merlin::Transcript;
@@ -28,7 +28,7 @@ pub struct Member {
 
     // This is the hash of the first public key
     // in the public set.
-    hashed_pubkey_basepoint: RistrettoPoint,
+    hashed_pubkey_basepoint: EdwardsPoint,
 
     // The signing member will have a nonce.
     // In an sigma protocol, this nonce would signify the commit phase.
@@ -64,7 +64,7 @@ impl Member {
         }
     }
     // Creates a member who will be a decoy in the ring
-    pub fn new_decoy(public_keys: Vec<RistrettoPoint>) -> Self {
+    pub fn new_decoy(public_keys: Vec<EdwardsPoint>) -> Self {
         let response = generate_rand_scalar();
 
         Self::new_decoy_with_responses(public_keys, response)
@@ -72,7 +72,7 @@ impl Member {
 
     // Creates a member who will be used for verification in a signature
     pub(crate) fn new_decoy_with_responses(
-        public_keys: Vec<RistrettoPoint>,
+        public_keys: Vec<EdwardsPoint>,
         response: Scalar,
     ) -> Self {
         let public_set = PublicSet(public_keys);
@@ -99,7 +99,7 @@ impl Member {
         self.public_set.len()
     }
     // Computes the key images if the member is a signer
-    pub fn compute_key_images(&self) -> Result<Vec<CompressedRistretto>, Error> {
+    pub fn compute_key_images(&self) -> Result<Vec<CompressedEdwardsY>, Error> {
         match &self.private_set {
             Some(priv_set) => Ok(priv_set.compute_key_images(&self.hashed_pubkey_basepoint)),
             None => Err(Error::NotASigner),
@@ -147,7 +147,7 @@ impl Member {
         &self,
         challenge: Scalar,
         agg_coeff: &[Scalar],
-    ) -> Result<(Scalar), Error> {
+    ) -> Result<Scalar, Error> {
         let private_set = self.private_set.as_ref().ok_or(Error::NotASigner)?;
         let nonce = self.nonce.as_ref().ok_or(Error::NotASigner)?;
 
@@ -172,7 +172,7 @@ impl Member {
     pub fn compute_decoy_challenge(
         &self,
         challenge: &Scalar,
-        key_images: &[CompressedRistretto],
+        key_images: &[CompressedEdwardsY],
         agg_coeffs: &[Scalar],
         pubkey_matrix: &[u8],
     ) -> Result<Scalar, Error> {
@@ -184,10 +184,16 @@ impl Member {
 
         assert_eq!(self.public_set.len(), key_images.len());
 
+        // Decompress the key images
+        let decompressed_key_images: Vec<_> = key_images
+            .iter()
+            .map(|ki| ki.decompress().unwrap())
+            .collect();
+
         let challenge = compute_challenge_ring(
-            &self.public_set.to_keys(),
+            &self.public_set.to_uncompressed_keys(),
             challenge,
-            key_images,
+            &decompressed_key_images,
             response,
             agg_coeffs,
             &self.hashed_pubkey_basepoint,
@@ -201,34 +207,28 @@ impl Member {
 // While signing, this function will be used by the decoys
 // When verifying this function will be used by all members
 pub fn compute_challenge_ring(
-    public_keys: &[CompressedRistretto],
+    public_keys: &[EdwardsPoint],
     challenge: &Scalar,
-    key_images: &[CompressedRistretto],
+    key_images: &[EdwardsPoint],
     response: &Scalar,
     agg_coeffs: &[Scalar],
-    hashed_pubkey_point: &RistrettoPoint,
+    hashed_pubkey_point: &EdwardsPoint,
     pubkey_matrix: &[u8],
 ) -> Scalar {
     let challenge_agg_coeffs: Vec<Scalar> = agg_coeffs.iter().map(|ac| ac * challenge).collect();
 
     //sum_aux_point = sum(mu_j * auxilary_public_keys)
     // L =response * G + challenge (sum_aux_point)
-    let sum_aux_point = RistrettoPoint::optional_multiscalar_mul(
-        &challenge_agg_coeffs,
-        public_keys.iter().map(|pt| pt.decompress()),
-    )
-    .unwrap();
+    let sum_aux_point =
+        EdwardsPoint::vartime_multiscalar_mul(&challenge_agg_coeffs, public_keys.iter());
     let l = (response * BASEPOINT) + sum_aux_point;
 
     // K = response * hashed_pubkey_point
     //sum_aux_images = sum(mu_j * aux_key_images)
     // R = K  + challenge (sum_aux_images)
     let k = response * hashed_pubkey_point;
-    let sum_aux_images = RistrettoPoint::optional_multiscalar_mul(
-        &challenge_agg_coeffs,
-        key_images.iter().map(|pt| pt.decompress()),
-    )
-    .unwrap();
+    let sum_aux_images =
+        EdwardsPoint::vartime_multiscalar_mul(&challenge_agg_coeffs, key_images.iter());
     let r = k + sum_aux_images;
 
     let mut transcript = Transcript::new(b"clsag");

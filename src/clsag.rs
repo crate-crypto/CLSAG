@@ -1,6 +1,6 @@
 use crate::member::Member;
 use crate::signature::Signature;
-use curve25519_dalek::ristretto::CompressedRistretto;
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use curve25519_dalek::scalar::Scalar;
 
 use crate::transcript::TranscriptProtocol;
@@ -63,7 +63,7 @@ impl Clsag {
             .collect()
     }
     // Returns public keys from all known members
-    pub fn public_keys(&self) -> Vec<Vec<CompressedRistretto>> {
+    pub fn public_keys(&self) -> Vec<Vec<CompressedEdwardsY>> {
         self.members
             .iter()
             .map(|member| member.public_set.to_keys())
@@ -211,7 +211,7 @@ impl Clsag {
 // Calculates the aggregation co-efficients mu_x and [mu_j]
 pub fn calc_aggregation_coefficients(
     pubkey_matrix: &[u8],
-    key_images: &[CompressedRistretto],
+    key_images: &[CompressedEdwardsY],
     message: &[u8],
 ) -> Vec<Scalar> {
     // precompute (pubkey_matrix || keyimages)
