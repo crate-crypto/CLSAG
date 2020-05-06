@@ -10,9 +10,9 @@ use sha2::Sha512;
 
 #[derive(Debug)]
 pub struct Signature {
-    pub(crate) challenge: Scalar,
-    pub(crate) responses: Vec<Scalar>,
-    pub(crate) key_images: Vec<CompressedRistretto>,
+    pub challenge: Scalar,
+    pub responses: Vec<Scalar>,
+    pub key_images: Vec<CompressedRistretto>,
 }
 
 pub enum Error {
